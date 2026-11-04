@@ -9,11 +9,11 @@ CI/CD: push main → lint/tests → Docker build → Trivy → ECR via short-liv
 GitHub App image-only GitOps PR → optional DEV auto-promotion → Argo CD.
 Actions never patches EKS. PRs only test/build/scan and cannot publish.
 
-Configure ECR_PUBLISH_ROLE_ARN after the scoped Terraform role is reviewed/applied.
-Until then CI still tests/builds/scans; publish is explicitly skipped.
-Configure GITOPS_APP_ID, GITOPS_APP_PRIVATE_KEY and DEV_AUTO_PROMOTE=true to enable
-promotion. The App token must only access cosmotech-gitops. Never copy credentials
-into source. The worker role is independent of the API publishing role.
+DEV delivery is enabled without human approval. ECR_PUBLISH_ROLE_ARN selects the
+worker-only OIDC role; GITOPS_APP_ID and GITOPS_APP_PRIVATE_KEY use the existing
+GitHub App installed only on cosmotech-gitops. DEV_AUTO_PROMOTE=true enables the
+validated image-only merge. Missing configuration fails delivery rather than
+silently skipping publication. Main source and workflow changes trigger CI.
 
 Host: https://orders-worker-dev.cosmotechsolutions.com.br/health/ready.
 Only health GETs are served; submit business requests to orders-api-dev, which queues

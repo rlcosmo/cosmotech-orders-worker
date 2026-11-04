@@ -3,7 +3,7 @@ on:
   push:
     branches: [main]
     # Source changes build images; workflow-only fixes use a targeted dispatch.
-    paths: [src/**, tests/**, requirements*.txt, .dockerignore]
+    paths: [src/**, tests/**, requirements*.txt, .dockerignore, .github/workflows/worker-ci.yml]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -43,7 +43,7 @@ jobs:
           path: /tmp/orders-worker-image.tar
           retention-days: 2
   publish:
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && inputs.approved_run_id == '' && vars.ECR_PUBLISH_ROLE_ARN != ''
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && inputs.approved_run_id == ''
     needs: test-build-scan
     runs-on: ubuntu-latest
     permissions:
