@@ -1,4 +1,4 @@
-name: orders-ci
+name: worker-ci
 on:
   push:
     branches: [main]
@@ -8,14 +8,14 @@ on:
   workflow_dispatch:
     inputs:
       approved_run_id:
-        description: Reuse a successful orders-ci image for proposal only; empty builds normally
+        description: Reuse a successful worker-ci image for proposal only; empty builds normally
         type: string
         required: false
         default: ''
 permissions:
   contents: read
 concurrency:
-  group: orders-ci-${{ github.ref }}
+  group: worker-ci-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   test-build-scan:
@@ -29,21 +29,21 @@ jobs:
       - run: python -m pip install -r requirements.txt ruff==0.17.3
       - run: ruff check src tests
       - run: python -m pytest tests/unit -q
-      - run: docker build -f src/orders/runtime/Dockerfile.api -t orders-api:${{ github.sha }} .
+      - run: docker build -f src/orders/runtime/Dockerfile.worker -t orders-worker:${{ github.sha }} .
       - uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
-          image-ref: orders-api:${{ github.sha }}
+          image-ref: orders-worker:${{ github.sha }}
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: '1'
-      - run: docker save orders-api:${{ github.sha }} -o /tmp/orders-api-image.tar
+      - run: docker save orders-worker:${{ github.sha }} -o /tmp/orders-worker-image.tar
       - uses: actions/upload-artifact@v4
         with:
-          name: orders-api-image
-          path: /tmp/orders-api-image.tar
+          name: orders-worker-image
+          path: /tmp/orders-worker-image.tar
           retention-days: 2
   publish:
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && inputs.approved_run_id == ''
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && inputs.approved_run_id == '' && vars.ECR_PUBLISH_ROLE_ARN != ''
     needs: test-build-scan
     runs-on: ubuntu-latest
     permissions:
@@ -53,21 +53,21 @@ jobs:
       image: ${{ steps.publish.outputs.image }}
     steps:
       - uses: actions/download-artifact@v4
-        with: {name: orders-api-image, path: /tmp}
+        with: {name: orders-worker-image, path: /tmp}
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::414053644145:role/cosmotech-orders-api-github-ecr
+          role-to-assume: ${{ vars.ECR_PUBLISH_ROLE_ARN }}
           aws-region: us-east-1
       - uses: aws-actions/amazon-ecr-login@v2
       - id: publish
         shell: bash
         run: |
           set -euo pipefail
-          docker load -i /tmp/orders-api-image.tar
+          docker load -i /tmp/orders-worker-image.tar
           registry=414053644145.dkr.ecr.us-east-1.amazonaws.com
-          repository=aws-eks-istio-lab-dev-orders-api
+          repository=aws-eks-istio-lab-dev-orders-worker
           image="$registry/$repository:sha-$GITHUB_SHA"
-          docker tag "orders-api:$GITHUB_SHA" "$image"
+          docker tag "orders-worker:$GITHUB_SHA" "$image"
           if ! aws ecr describe-images --repository-name "$repository" --image-ids "imageTag=sha-$GITHUB_SHA" >/dev/null 2>&1; then
             docker push "$image"
           fi
@@ -101,7 +101,7 @@ jobs:
           import json,os,pathlib
           run=json.loads((pathlib.Path(os.environ['RUNNER_TEMP'])/'source-run.json').read_text())
           assert run['conclusion']=='success' and run['head_branch']=='main'
-          assert run['path']=='.github/workflows/orders-ci.yml' and run['event'] in ['push','workflow_dispatch']
+          assert run['path']=='.github/workflows/worker-ci.yml' and run['event'] in ['push','workflow_dispatch']
           CHECK
             gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" --name proposed-gitops-image --dir "$RUNNER_TEMP/approved-image"
           fi
@@ -116,7 +116,7 @@ jobs:
               sha=os.environ['GITHUB_SHA']
               image=os.environ['BUILT_IMAGE']
           assert re.fullmatch('[0-9a-f]{40}',sha)
-          assert re.fullmatch(r'414053644145\.dkr\.ecr\.us-east-1\.amazonaws\.com/aws-eks-istio-lab-dev-orders-api@sha256:[0-9a-f]{64}',image)
+          assert re.fullmatch(r'414053644145\.dkr\.ecr\.us-east-1\.amazonaws\.com/aws-eks-istio-lab-dev-orders-worker@sha256:[0-9a-f]{64}',image)
           with open(os.environ['GITHUB_OUTPUT'],'a') as output:
               output.write(f'sha={sha}\nimage={image}\n')
           CHECK
@@ -160,7 +160,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          branch="image/orders-api-${SOURCE_SHA}"
+          branch="image/orders-worker-${SOURCE_SHA}"
           if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
             git fetch origin "$branch"
             git switch -c "$branch" FETCH_HEAD
@@ -169,17 +169,17 @@ jobs:
           fi
           python3 - <<'CHECK'
           import json,os,pathlib
-          p=pathlib.Path('gitops/apps/orders-api/dev/deployment.json')
+          p=pathlib.Path('gitops/apps/orders-worker/dev/deployment.json')
           value=json.loads(p.read_text())
           image,digest=os.environ['IMAGE'].split('@')
           value['spec']['template']['spec']['containers'][0]['image']=image+':sha-'+os.environ['SOURCE_SHA']+'@'+digest
           p.write_text(json.dumps(value,indent=2)+'\n')
           body=pathlib.Path(os.environ['RUNNER_TEMP'])/'gitops-pr-body.md'
-          body.write_text('Promote Orders API DEV image from successful CI commit '+os.environ['SOURCE_SHA']+'.\n\nImage: `'+os.environ['IMAGE']+'`. Tests, build and scan passed before ECR publication.\n\nThe owner authorized this DEV image-only pilot without human approvals. DEV_AUTO_PROMOTE and the versioned DEV policy control automatic merge. Argo CD performs deployment; Actions never writes the EKS Deployment.\n')
+          body.write_text('Promote Orders Worker DEV image from successful CI commit '+os.environ['SOURCE_SHA']+'.\n\nImage: `'+os.environ['IMAGE']+'`. Tests, build and scan passed before ECR publication.\n\nThe owner authorized this DEV image-only pilot without human approvals. DEV_AUTO_PROMOTE and the versioned DEV policy control automatic merge. Argo CD performs deployment; Actions never writes the EKS Deployment.\n')
           CHECK
           git config user.name 'cosmotech-automation[bot]'
           git config user.email 'cosmotech-automation@users.noreply.github.com'
-          git add gitops/apps/orders-api/dev/deployment.json
+          git add gitops/apps/orders-worker/dev/deployment.json
           if ! git diff --cached --quiet; then
             git commit -m "chore(orders): propose image $SOURCE_SHA"
             git push origin "$branch"
@@ -196,7 +196,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          branch="image/orders-api-${SOURCE_SHA}"
+          branch="image/orders-worker-${SOURCE_SHA}"
           gh pr view "$branch" --repo rlcosmo/cosmotech-gitops --json number,state,headRefOid > "$RUNNER_TEMP/promotion-pr.json"
           if [[ "$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["state"])' "$RUNNER_TEMP/promotion-pr.json")" == MERGED ]]; then
             echo 'DEV promotion already merged; nothing to change.'
@@ -206,5 +206,5 @@ jobs:
           [[ "$pr" =~ ^[0-9]+$ && "$head" =~ ^[0-9a-f]{40}$ ]]
           git fetch origin main "$head"
           git worktree add --detach "$RUNNER_TEMP/dev-validator" origin/main
-          (cd "$RUNNER_TEMP/dev-validator" && python3 scripts/validate_dev_image.py --base origin/main --head "$head" --expected-sha "$SOURCE_SHA" --expected-digest "${IMAGE#*@}")
-          gh api --method PUT "repos/rlcosmo/cosmotech-gitops/pulls/$pr/merge" -f sha="$head" -f merge_method=squash -f commit_title="chore(dev): promote Orders API $SOURCE_SHA" --jq 'if .merged then .sha else error(.message) end'
+          (cd "$RUNNER_TEMP/dev-validator" && python3 scripts/validate_dev_image.py --application orders-worker --base origin/main --head "$head" --expected-sha "$SOURCE_SHA" --expected-digest "${IMAGE#*@}")
+          gh api --method PUT "repos/rlcosmo/cosmotech-gitops/pulls/$pr/merge" -f sha="$head" -f merge_method=squash -f commit_title="chore(dev): promote Orders Worker $SOURCE_SHA" --jq 'if .merged then .sha else error(.message) end'

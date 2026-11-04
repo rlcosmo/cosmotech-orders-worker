@@ -1,13 +1,32 @@
-# cosmotech-orders-api
+# cosmotech-orders-worker
 
-DEV pipeline: source push → tests/lint → Docker build → Trivy scan → immutable SHA image in ECR (AWS OIDC) → GitHub App proposes the GitOps image → automatic DEV merge → Argo CD sync → EKS rollout.
+SQS consumer extracted from cosmotech-orders-api with original Git ancestry.
+Shared Orders modules and contract tests are retained as a pinned snapshot until a
+versioned shared package is introduced. This repository owns Dockerfile.worker and
+the worker runtime; API source remains only for shared contract tests.
 
-The owner explicitly authorized this first Orders API DEV pilot without human/GMUD approvals. `DEV_AUTO_PROMOTE=true` enables automatic merge only after successful CI and the exact image-only policy in cosmotech-gitops. The App token is limited to that repository. Actions never modifies the EKS Deployment directly. Authentication, scan and immutable image pinning remain enabled; no human approval is simulated.
+CI/CD: push main → lint/tests → Docker build → Trivy → ECR via short-lived OIDC →
+GitHub App image-only GitOps PR → optional DEV auto-promotion → Argo CD.
+Actions never patches EKS. PRs only test/build/scan and cannot publish.
 
-Repository Secrets: GITOPS_APP_PRIVATE_KEY and GITOPS_APP_ID (the ID may alternatively be a repository Variable). Source changes build images; workflow-only corrections can dispatch `approved_run_id` to reuse a successful CI artifact. The promotion validates source run/branch, repository scope, SHA/digest and the exact Deployment image-only diff before a SHA-matched merge. An already merged promotion is a no-op.
+Configure ECR_PUBLISH_ROLE_ARN after the scoped Terraform role is reviewed/applied.
+Until then CI still tests/builds/scans; publish is explicitly skipped.
+Configure GITOPS_APP_ID, GITOPS_APP_PRIVATE_KEY and DEV_AUTO_PROMOTE=true to enable
+promotion. The App token must only access cosmotech-gitops. Never copy credentials
+into source. The worker role is independent of the API publishing role.
 
-Smoke test after rollout: port-forward `service/orders-api` service port 8000 to localhost 18080, then run `python scripts/smoke_dev_release.py`. It checks health/version, a random nonexistent order and an invalid POST; it never submits a valid order. Full business/SQS processing is outside this deployment smoke test.
+Host: https://orders-worker-dev.cosmotechsolutions.com.br/health/ready.
+Only health GETs are served; submit business requests to orders-api-dev, which queues
+SQS messages. Readiness requires a successful poll and clears on queue errors,
+shutdown or 90 seconds without progress. Liveness also detects a stalled loop.
+HPA: 1–4 replicas, worker container CPU target 70%, 300-second downscale stabilization.
+CPU scaling is a baseline; SQS backlog scaling requires an external metrics adapter.
+Existing idempotency, bounded SDK retries, 180-second visibility and queue DLQ are
+preserved. No queue/table migration or new application data retention is introduced.
 
-To stop automatic promotion, set DEV_AUTO_PROMOTE=false. Also disable the versioned GitOps DEV policy and Application automated sync, then apply the Application configuration on the dedicated management K3s. Reinstating mandatory approvals is a separate governance change; this pilot does not claim that private GitHub protections became available.
-
-Original commit ancestry is preserved. The currently shared Orders library remains here until Worker extraction is explicitly undertaken.
+On release check Argo Synced/Healthy, HPA AbleToScale/ScalingActive, endpoint TLS,
+queue age/DLQ and processing errors. Queue-age/DLQ alert ownership stays with the
+existing observability stack. Roll back by reverting the GitOps image digest; never
+reset queue contents or DynamoDB inventory. Extra replicas can increase EKS capacity
+and AWS request costs. CI image artifacts retain two days; promotion evidence uses
+the GitHub artifact default retention.

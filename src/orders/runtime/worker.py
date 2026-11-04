@@ -15,6 +15,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from orders.consumer.errors import PermanentProcessingError, TransientProcessingError
 from orders.consumer.processing import DynamoDBOrderProcessor
 from orders.consumer.repository import create_dynamodb_resource
+from orders.runtime.health import WorkerHealth, start_health_server
 from orders.shared.logging import get_logger
 from orders.shared.tracing import configure_tracing, span
 from orders.shared.validation import validate_order, validate_order_event
@@ -54,11 +55,14 @@ def main() -> None:
     ))
     processor = DynamoDBOrderProcessor(table_name, dynamodb_resource=create_dynamodb_resource(
         region_name=region), key_schema=os.getenv("ORDERS_KEY_SCHEMA", "legacy"))
+    health = WorkerHealth()
+    start_health_server(health)
     stopping = False
 
     def stop(signum, frame):
         nonlocal stopping
         stopping = True
+        health.draining = True
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
@@ -66,6 +70,7 @@ def main() -> None:
         try:
             batch = sqs.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=1,
                 WaitTimeSeconds=20, VisibilityTimeout=180, MessageAttributeNames=["All"])
+            health.record_poll(True)
             for message in batch.get("Messages", []):
                 try:
                     process_message(message, processor)
@@ -75,6 +80,7 @@ def main() -> None:
                     logger.error("order_processing_failed", extra={"event": "order_processing_failed",
                                  "error_type": type(error).__name__})
         except (BotoCoreError, ClientError) as error:
+            health.record_poll(False)
             logger.error("queue_poll_failed", extra={"event": "queue_poll_failed",
                          "error_type": type(error).__name__})
             time.sleep(5)
