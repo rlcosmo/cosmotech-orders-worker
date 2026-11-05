@@ -38,3 +38,7 @@ the GitHub artifact default retention.
 ## Inicialização e disponibilidade no host
 
 A startup probe controla a inicialização antes de habilitar readiness/liveness. No worker, ela só passa após a primeira consulta SQS bem-sucedida; a primeira verificação ocorre após a espera normal de long polling (20 segundos). Falhas reais de acesso à fila continuam retornando 503. O rollout mantém a réplica antiga até a nova ficar pronta, usando maxUnavailable=0, maxSurge=1 e a readiness gate do ALB habilitada no namespace pela configuração de infraestrutura `ops/kubernetes/orders-ingress-readiness.json`.
+
+## Logs e conexões sintéticas
+
+Um ciclo por pod a cada 300 segundos registra heartbeat JSON, chama a rota de diagnóstico da API e faz GET HTTPS em `example.com`. GET `/diagnostics/ping` registra chamadas internas/externas com spans de servidor; os clientes propagam W3C traceparent e registram status, duração e trace ID. Nenhum teste gera pedido de negócio. Os alvos são fixos, os timeouts são limitados e corpo de resposta/credenciais ficam fora dos logs. O estado de prontidão do polling SQS continua sendo avaliado separadamente pelos endpoints de saúde.

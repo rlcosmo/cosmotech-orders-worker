@@ -15,6 +15,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from orders.consumer.errors import PermanentProcessingError, TransientProcessingError
 from orders.consumer.processing import DynamoDBOrderProcessor
 from orders.consumer.repository import create_dynamodb_resource
+from orders.runtime.connectivity import start_connectivity_checks
 from orders.runtime.health import WorkerHealth, start_health_server
 from orders.shared.logging import get_logger
 from orders.shared.tracing import configure_tracing, span
@@ -57,12 +58,15 @@ def main() -> None:
         region_name=region), key_schema=os.getenv("ORDERS_KEY_SCHEMA", "legacy"))
     health = WorkerHealth()
     start_health_server(health)
+    connectivity_stop = start_connectivity_checks("orders-worker")
     stopping = False
 
     def stop(signum, frame):
         nonlocal stopping
         stopping = True
         health.draining = True
+        if connectivity_stop is not None:
+            connectivity_stop.set()
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)

@@ -6,6 +6,8 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 
+from orders.runtime.connectivity import receive_ping
+
 
 class WorkerHealth:
     """A stalled polling loop fails probes; queue failures clear readiness."""
@@ -31,8 +33,13 @@ def start_health_server(health: WorkerHealth, port: int = 8000) -> ThreadingHTTP
     """Start a daemon HTTP listener; caller owns server shutdown in tests."""
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
-            status = health.status(self.path)
-            body = json.dumps({"status": "ok" if status == 200 else "unavailable"}).encode()
+            if self.path == "/diagnostics/ping":
+                carrier = {k.lower():v for k,v in self.headers.items() if k.lower() in {"traceparent", "tracestate"}}
+                status, value = 200, receive_ping("orders-worker", carrier)
+            else:
+                status = health.status(self.path)
+                value = {"status": "ok" if status == 200 else "unavailable"}
+            body = json.dumps(value).encode()
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
