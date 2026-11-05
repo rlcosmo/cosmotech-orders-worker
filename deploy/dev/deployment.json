@@ -124,18 +124,32 @@
                 "path": "/health/live",
                 "port": "http"
               },
-              "initialDelaySeconds": 10,
+              "initialDelaySeconds": 0,
               "periodSeconds": 10,
-              "failureThreshold": 3
+              "failureThreshold": 3,
+              "timeoutSeconds": 2
             },
             "readinessProbe": {
               "httpGet": {
                 "path": "/health/ready",
                 "port": "http"
               },
-              "initialDelaySeconds": 10,
-              "periodSeconds": 10,
-              "failureThreshold": 3
+              "initialDelaySeconds": 0,
+              "periodSeconds": 5,
+              "failureThreshold": 3,
+              "timeoutSeconds": 2
+            },
+            "startupProbe": {
+              "httpGet": {
+                "path": "/health/ready",
+                "port": "http",
+                "scheme": "HTTP"
+              },
+              "initialDelaySeconds": 25,
+              "periodSeconds": 5,
+              "timeoutSeconds": 2,
+              "failureThreshold": 30,
+              "successThreshold": 1
             }
           }
         ],
