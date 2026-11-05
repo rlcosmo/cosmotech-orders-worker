@@ -30,3 +30,7 @@ existing observability stack. Roll back by reverting the GitOps image digest; ne
 reset queue contents or DynamoDB inventory. Extra replicas can increase EKS capacity
 and AWS request costs. CI image artifacts retain two days; promotion evidence uses
 the GitHub artifact default retention.
+
+## Configuração e entrega DEV
+
+`deploy/dev` neste repositório é a origem oficial de Deployment, ConfigMap, Service, HPA e host. Um push em `main` executa testes, valida essas configurações, constrói e verifica a imagem, publica no ECR e promove automaticamente o conjunto completo para o espelho gerado de entrega GitOps. Argo CD reconcilia o cluster e Kestra mostra as etapas reais por cluster. Não há aprovação humana nesta fase. Não edite o espelho gerado para configurar esta aplicação.

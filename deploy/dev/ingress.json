@@ -1,0 +1,52 @@
+{
+  "apiVersion": "networking.k8s.io/v1",
+  "kind": "Ingress",
+  "metadata": {
+    "name": "orders-worker-dev",
+    "namespace": "orders-worker",
+    "annotations": {
+      "alb.ingress.kubernetes.io/group.name": "observability",
+      "alb.ingress.kubernetes.io/group.order": "21",
+      "alb.ingress.kubernetes.io/target-type": "ip",
+      "alb.ingress.kubernetes.io/listen-ports": "[{\"HTTPS\":443}]",
+      "alb.ingress.kubernetes.io/healthcheck-path": "/health/ready",
+      "alb.ingress.kubernetes.io/success-codes": "200"
+    }
+  },
+  "spec": {
+    "ingressClassName": "alb",
+    "rules": [
+      {
+        "host": "orders-worker-dev.cosmotechsolutions.com.br",
+        "http": {
+          "paths": [
+            {
+              "path": "/health/live",
+              "pathType": "Exact",
+              "backend": {
+                "service": {
+                  "name": "orders-worker",
+                  "port": {
+                    "number": 8000
+                  }
+                }
+              }
+            },
+            {
+              "path": "/health/ready",
+              "pathType": "Exact",
+              "backend": {
+                "service": {
+                  "name": "orders-worker",
+                  "port": {
+                    "number": 8000
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "apiVersion": "v1",
+  "kind": "Service",
+  "metadata": {
+    "name": "orders-worker",
+    "namespace": "orders-worker",
+    "labels": {
+      "app": "orders-worker"
+    }
+  },
+  "spec": {
+    "type": "ClusterIP",
+    "selector": {
+      "app": "orders-worker"
+    },
+    "ports": [
+      {
+        "name": "http",
+        "port": 8000,
+        "targetPort": "http",
+        "protocol": "TCP"
+      }
+    ]
+  }
+}
