@@ -42,3 +42,5 @@ A startup probe controla a inicialização antes de habilitar readiness/liveness
 ## Logs e conexões sintéticas
 
 Um ciclo por pod a cada 300 segundos registra heartbeat JSON, chama a rota de diagnóstico da API e faz GET HTTPS em `example.com`. GET `/diagnostics/ping` registra chamadas internas/externas com spans de servidor; os clientes propagam W3C traceparent e registram status, duração e trace ID. Nenhum teste gera pedido de negócio. Os alvos são fixos, os timeouts são limitados e corpo de resposta/credenciais ficam fora dos logs. O estado de prontidão do polling SQS continua sendo avaliado separadamente pelos endpoints de saúde.
+
+O APM exporta métricas OTLP reais de volume e duração por operação, com atributos limitados a operação, tipo e estado. Exportação assíncrona a cada 60 segundos; chamadas sintéticas continuam a cada 5 minutos. Logs estruturados seguem pelo Alloy para Loki e Zabbix.
