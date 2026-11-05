@@ -43,6 +43,18 @@
                   }
                 }
               }
+            },
+            {
+              "path": "/diagnostics/ping",
+              "pathType": "Exact",
+              "backend": {
+                "service": {
+                  "name": "orders-worker",
+                  "port": {
+                    "number": 8000
+                  }
+                }
+              }
             }
           ]
         }
