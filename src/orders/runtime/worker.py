@@ -10,13 +10,14 @@ from typing import Any
 
 import boto3
 from botocore.config import Config
-from botocore.exceptions import BotoCoreError, ClientError
 
-from orders.consumer.errors import PermanentProcessingError, TransientProcessingError
 from orders.consumer.processing import DynamoDBOrderProcessor
 from orders.consumer.repository import create_dynamodb_resource
 from orders.runtime.connectivity import start_connectivity_checks
+from orders.runtime.controlled_consumer import mode_from_file, poll_once
+from orders.runtime.demo_fault import check_synthetic_fault
 from orders.runtime.health import WorkerHealth, start_health_server
+from orders.runtime.worker_metrics import WorkerMetrics
 from orders.shared.logging import get_logger
 from orders.shared.tracing import configure_tracing, span
 from orders.shared.validation import validate_order, validate_order_event
@@ -57,7 +58,10 @@ def main() -> None:
     processor = DynamoDBOrderProcessor(table_name, dynamodb_resource=create_dynamodb_resource(
         region_name=region), key_schema=os.getenv("ORDERS_KEY_SCHEMA", "legacy"))
     health = WorkerHealth()
-    start_health_server(health)
+    metrics = WorkerMetrics(os.getenv("RELEASE_VERSION", "unversioned"), os.getenv("RELEASE_CHANNEL", "stable"))
+    start_health_server(health, metrics=metrics)
+    control_file = os.getenv("WORKER_CONTROL_FILE")
+    require_lease = os.getenv("RELEASE_CHANNEL", "stable") == "canary"
     connectivity_stop = start_connectivity_checks("orders-worker")
     stopping = False
 
@@ -70,24 +74,16 @@ def main() -> None:
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
+    def controlled_process(message):
+        check_synthetic_fault(message, channel=os.getenv("RELEASE_CHANNEL", "stable"), control_file=control_file)
+        process_message(message, processor)
+
     while not stopping:
-        try:
-            batch = sqs.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=1,
-                WaitTimeSeconds=20, VisibilityTimeout=180, MessageAttributeNames=["All"])
-            health.record_poll(True)
-            for message in batch.get("Messages", []):
-                try:
-                    process_message(message, processor)
-                    sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=message["ReceiptHandle"])
-                except (KeyError, ValueError, TypeError, PermanentProcessingError,
-                        TransientProcessingError, BotoCoreError, ClientError) as error:
-                    logger.error("order_processing_failed", extra={"event": "order_processing_failed",
-                                 "error_type": type(error).__name__})
-        except (BotoCoreError, ClientError) as error:
-            health.record_poll(False)
-            logger.error("queue_poll_failed", extra={"event": "queue_poll_failed",
-                         "error_type": type(error).__name__})
-            time.sleep(5)
+        result = poll_once(sqs, queue_url, controlled_process,
+                           lambda: stopping or mode_from_file(control_file, require_lease=require_lease) != "run",
+                           health, metrics)
+        if result in {"drained", "poll_error"}:
+            time.sleep(1 if result == "drained" else 5)
 
 
 if __name__ == "__main__":
