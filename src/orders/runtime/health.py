@@ -52,7 +52,7 @@ def start_health_server(health: WorkerHealth, port: int = 8000, *, metrics=None)
                 status, value = 200, receive_ping("orders-worker", carrier)
             else:
                 status = health.status(self.path)
-                value = {"status": "ok" if status == 200 else "unavailable", "release": VERSION}
+                value = {"status": "ok" if status == 200 else "unavailable", "service": "orders-worker", "release": VERSION}
             body = json.dumps(value).encode()
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
