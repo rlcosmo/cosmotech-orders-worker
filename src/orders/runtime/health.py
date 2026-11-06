@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
@@ -47,7 +48,10 @@ def start_health_server(health: WorkerHealth, port: int = 8000, *, metrics=None)
                 self.end_headers()
                 self.wfile.write(body)
                 return
-            if self.path == "/diagnostics/ping":
+            if self.path == "/version":
+                status, value = 200, {"service": "orders-worker", "version": VERSION,
+                                      "channel": os.getenv("RELEASE_CHANNEL", "stable")}
+            elif self.path == "/diagnostics/ping":
                 carrier = {k.lower():v for k,v in self.headers.items() if k.lower() in {"traceparent", "tracestate"}}
                 status, value = 200, receive_ping("orders-worker", carrier)
             else:

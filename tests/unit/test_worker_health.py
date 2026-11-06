@@ -1,3 +1,4 @@
+import json
 import urllib.error
 import urllib.request
 from unittest.mock import patch
@@ -35,6 +36,11 @@ def test_http_health_does_not_accept_business_requests():
     try:
         with urllib.request.urlopen(base + "/health/ready", timeout=2) as response:
             assert response.status == 200
+        with urllib.request.urlopen(base + "/version", timeout=2) as response:
+            body = json.load(response)
+            assert body["service"] == "orders-worker"
+            assert body["channel"] == "stable"
+            assert body["version"] == "1.0.3"
         try:
             urllib.request.urlopen(base + "/orders", data=b"{}", timeout=2)
         except urllib.error.HTTPError as error:
