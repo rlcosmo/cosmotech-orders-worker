@@ -44,3 +44,7 @@ A startup probe controla a inicialização antes de habilitar readiness/liveness
 Um ciclo por pod a cada 300 segundos registra heartbeat JSON, chama a rota de diagnóstico da API e faz GET HTTPS em `example.com`. GET `/diagnostics/ping` registra chamadas internas/externas com spans de servidor; os clientes propagam W3C traceparent e registram status, duração e trace ID. Nenhum teste gera pedido de negócio. Os alvos são fixos, os timeouts são limitados e corpo de resposta/credenciais ficam fora dos logs. O estado de prontidão do polling SQS continua sendo avaliado separadamente pelos endpoints de saúde.
 
 O APM exporta métricas OTLP reais de volume e duração por operação, com atributos limitados a operação, tipo e estado. Exportação assíncrona a cada 60 segundos; chamadas sintéticas continuam a cada 5 minutos. Logs estruturados seguem pelo Alloy para Loki e Zabbix.
+
+## Capacidade DEV
+
+A release 1.0.6 define duas réplicas estáveis pelo HPA (`minReplicas=2`, `maxReplicas=2`). O HPA mantém a propriedade da escala; não há `spec.replicas` concorrente no manifesto. A mudança passa por CI, GMUD e aprovação conforme a política de criticidade e alterações sensíveis. No Worker, o Canary continua limitado a1→2 consumidores temporários, com promoção, drenagem e restauração da capacidade aprovada.
