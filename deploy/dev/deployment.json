@@ -34,7 +34,9 @@
           "sidecar.istio.io/proxyMemoryLimit": "256Mi"
         },
         "labels": {
-          "app": "orders-worker"
+          "app": "orders-worker",
+          "cosmotech.io/component": "orders-worker",
+          "cosmotech.io/channel": "stable"
         }
       },
       "spec": {
@@ -72,6 +74,18 @@
               {
                 "name": "OTEL_RESOURCE_ATTRIBUTES",
                 "value": "deployment.environment=dev,service.namespace=orders"
+              },
+              {
+                "name": "WORKER_CONTROL_FILE",
+                "value": "/etc/cosmotech/stable/mode"
+              },
+              {
+                "name": "RELEASE_CHANNEL",
+                "value": "stable"
+              },
+              {
+                "name": "RELEASE_VERSION",
+                "value": "IMAGE_REPLACED_BY_CI"
               }
             ],
             "envFrom": [
@@ -109,6 +123,11 @@
               {
                 "mountPath": "/otel",
                 "name": "otel-java-agent",
+                "readOnly": true
+              },
+              {
+                "name": "stable-control",
+                "mountPath": "/etc/cosmotech/stable",
                 "readOnly": true
               }
             ],
@@ -166,11 +185,17 @@
         },
         "serviceAccount": "orders-worker-sa",
         "serviceAccountName": "orders-worker-sa",
-        "terminationGracePeriodSeconds": 60,
+        "terminationGracePeriodSeconds": 240,
         "volumes": [
           {
             "emptyDir": {},
             "name": "otel-java-agent"
+          },
+          {
+            "name": "stable-control",
+            "configMap": {
+              "name": "orders-worker-stable-control"
+            }
           }
         ]
       }
