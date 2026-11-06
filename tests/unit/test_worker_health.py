@@ -40,7 +40,7 @@ def test_http_health_does_not_accept_business_requests():
             body = json.load(response)
             assert body["service"] == "orders-worker"
             assert body["channel"] == "stable"
-            assert body["version"] == "1.0.3"
+            assert body["version"] == "1.0.4"
         try:
             urllib.request.urlopen(base + "/orders", data=b"{}", timeout=2)
         except urllib.error.HTTPError as error:

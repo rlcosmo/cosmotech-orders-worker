@@ -19,6 +19,7 @@ class WorkerMetrics:
         self.lock = threading.Lock()
         self.counts = {"success": 0, "error": 0, "ack_error": 0}
         self.retries = self.ddb_errors = self.poll_errors = self.inflight = 0
+        self.visibility_errors = 0
         self.duration_sum = 0.0
         self.buckets = [0] * len(self.BUCKETS)
         self.draining = False
@@ -42,7 +43,8 @@ class WorkerMetrics:
             lines = [f'cosmotech_worker_messages_total{{{self.labels},result="{result}"}} {value}'
                      for result, value in self.counts.items()]
             for name, value in {"retries_total": self.retries, "dynamodb_errors_total": self.ddb_errors,
-                                "poll_errors_total": self.poll_errors, "inflight": self.inflight,
+                                "poll_errors_total": self.poll_errors, "visibility_errors_total": self.visibility_errors,
+                                "inflight": self.inflight,
                                 "draining": int(self.draining), "heartbeat_timestamp_seconds": time.time()}.items():
                 lines.append(f"cosmotech_worker_{name}{{{self.labels}}} {value}")
             total = sum(self.counts.values())

@@ -61,8 +61,15 @@ def poll_once(sqs: Any, queue_url: str, process: Callable[[dict], None],
         if should_drain():
             health.draining = metrics.draining = True
             # This message has not entered business processing. Never acknowledge it.
-            sqs.change_message_visibility(QueueUrl=queue_url, ReceiptHandle=message["ReceiptHandle"],
-                                          VisibilityTimeout=0)
+            try:
+                sqs.change_message_visibility(QueueUrl=queue_url, ReceiptHandle=message["ReceiptHandle"],
+                                              VisibilityTimeout=0)
+            except (BotoCoreError, ClientError) as error:
+                # Leave the message unacknowledged: its existing visibility timeout
+                # remains the recovery boundary. Keep draining and expose the fault.
+                metrics.visibility_errors += 1
+                logger.error("sqs_visibility_release_failed", extra={
+                    "event": "sqs_visibility_release_failed", "error_type": type(error).__name__})
             return "drained"
         started = time.monotonic()
         retry = int(message.get("Attributes", {}).get("ApproximateReceiveCount", "1")) > 1

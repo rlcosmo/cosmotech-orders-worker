@@ -139,3 +139,15 @@ def test_stable_and_canary_duplicate_delivery_does_not_repeat_inventory_effects(
     process_message(message, stable)
     process_message(message, canary)
     assert table.get_item(Key={"order_id": "INVENTORY#LAB"})["Item"]["stock"]["sku-test"] == 3
+
+
+def test_visibility_release_denied_stays_drained_without_ack_or_process():
+    sqs, process = Mock(), Mock()
+    sqs.receive_message.return_value={"Messages":[{"ReceiptHandle":"test-handle"}]}
+    sqs.change_message_visibility.side_effect=ClientError({"Error":{"Code":"AccessDenied"}},"ChangeMessageVisibility")
+    calls=iter([False,True]);m,health=metrics(),WorkerHealth()
+    assert poll_once(sqs,"queue",process,lambda:next(calls),health,m)=="drained"
+    process.assert_not_called();sqs.delete_message.assert_not_called()
+    assert m.visibility_errors==1 and m.inflight==0
+    assert health.draining and health.status("/health/live")==200
+    assert 'cosmotech_worker_visibility_errors_total' in m.render().decode()
