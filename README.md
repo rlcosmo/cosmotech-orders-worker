@@ -1,35 +1,38 @@
-# cosmotech-orders-worker
+# CosmoTech — Orders Worker
 
-SQS consumer extracted from cosmotech-orders-api with original Git ancestry.
-Shared Orders modules and contract tests are retained as a pinned snapshot until a
-versioned shared package is introduced. This repository owns Dockerfile.worker and
-the worker runtime; API source remains only for shared contract tests.
+Consumidor de mensagens **Amazon SQS** responsável pelo processamento assíncrono de pedidos no laboratório EKS. Foi separado de `cosmotech-orders-api` com preservação do histórico Git.
 
-CI/CD: push main → lint/tests → Docker build → Trivy → ECR via short-lived OIDC →
-GitHub App image-only GitOps PR → optional DEV auto-promotion → Argo CD.
-Actions never patches EKS. PRs only test/build/scan and cannot publish.
+Os módulos Orders compartilhados e testes de contrato permanecem como snapshot fixado até a criação de um pacote compartilhado versionado. Este repositório mantém `Dockerfile.worker` e o runtime do Worker; o código da API mantido aqui serve apenas aos testes de contrato.
 
-DEV delivery is enabled without human approval. ECR_PUBLISH_ROLE_ARN selects the
-worker-only OIDC role; GITOPS_APP_ID and GITOPS_APP_PRIVATE_KEY use the existing
-GitHub App installed only on cosmotech-gitops. DEV_AUTO_PROMOTE=true enables the
-validated image-only merge. Missing configuration fails delivery rather than
-silently skipping publication. Main source and workflow changes trigger CI.
+## Como funciona a entrega DEV
 
-Host: https://orders-worker-dev.cosmotechsolutions.com.br/health/ready.
-Only health GETs are served; submit business requests to orders-api-dev, which queues
-SQS messages. Readiness requires a successful poll and clears on queue errors,
-shutdown or 90 seconds without progress. Liveness also detects a stalled loop.
-HPA: 1–4 replicas, worker container CPU target 70%, 300-second downscale stabilization.
-CPU scaling is a baseline; SQS backlog scaling requires an external metrics adapter.
-Existing idempotency, bounded SDK retries, 180-second visibility and queue DLQ are
-preserved. No queue/table migration or new application data retention is introduced.
+Push em `main` → lint/testes → build Docker → Trivy → publicação no ECR via OIDC temporário → proposta GitOps pelo GitHub App → promoção DEV validada → sincronização Argo CD → EKS.
 
-On release check Argo Synced/Healthy, HPA AbleToScale/ScalingActive, endpoint TLS,
-queue age/DLQ and processing errors. Queue-age/DLQ alert ownership stays with the
-existing observability stack. Roll back by reverting the GitOps image digest; never
-reset queue contents or DynamoDB inventory. Extra replicas can increase EKS capacity
-and AWS request costs. CI image artifacts retain two days; promotion evidence uses
-the GitHub artifact default retention.
+O Actions não modifica Deployments EKS. Pull requests apenas validam, constroem e analisam imagens, sem publicá-las. A entrega DEV está habilitada sem aprovação humana.
+
+## Configurações necessárias
+
+- `ECR_PUBLISH_ROLE_ARN`: role OIDC exclusiva do Worker.
+- `GITOPS_APP_ID` e `GITOPS_APP_PRIVATE_KEY`: GitHub App instalado somente em `cosmotech-gitops`.
+- `DEV_AUTO_PROMOTE=true`: permite mesclagem automática **após** validação de alteração exclusiva de imagem.
+
+Configuração obrigatória ausente faz a entrega falhar; não é ignorada silenciosamente. Mudanças de código ou workflow em `main` iniciam CI.
+
+## Saúde e processamento
+
+Endpoint: https://orders-worker-dev.cosmotechsolutions.com.br/health/ready
+
+O host atende apenas GETs de saúde. Requisições de negócio devem ser enviadas à Orders API, que publica mensagens na SQS. A readiness depende de polling SQS bem-sucedido e fica indisponível em erros da fila, desligamento ou 90 segundos sem progresso. A liveness também detecta loop travado.
+
+O HPA usa CPU do contêiner como métrica inicial; para escalar por backlog SQS é necessário adaptador de métricas externas. O histórico anterior documentava 1–4 réplicas, mas a seção **Capacidade DEV** abaixo descreve o padrão mais recente de duas réplicas fixas; confirme sempre o manifesto vigente.
+
+Mantêm-se idempotência, retries limitados do SDK, visibilidade SQS de 180 segundos e DLQ. Não há migração de tabelas/filas nem nova retenção de dados.
+
+## Validação e rollback
+
+Após publicar, confira Argo CD `Synced/Healthy`, HPA `AbleToScale/ScalingActive`, TLS do endpoint, idade das mensagens, DLQ e erros de processamento. Alertas da fila continuam na stack de observabilidade.
+
+Para reverter, restaure o digest da imagem validada anteriormente pelo GitOps. **Não limpe a fila nem altere o inventário DynamoDB.** Réplicas adicionais podem elevar capacidade EKS e custos de chamadas AWS. Artefatos de imagem do CI são retidos por dois dias; evidências da promoção seguem a retenção padrão de artefatos GitHub.
 
 ## Configuração e entrega DEV
 
